@@ -1,0 +1,1379 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BTC Trading Advisor - Buy/Sell Timing</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <style>
+        :root {
+            color-scheme: dark;
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-card: #21262d;
+            --border-color: #30363d;
+            --text-primary: #e6edf3;
+            --text-secondary: #8b949e;
+            --green: #2ea043;
+            --red: #da3633;
+            --yellow: #d29922;
+            --blue: #58a6ff;
+        }
+        body {
+            background: var(--bg-primary);
+            color: var(--text-primary) !important;
+            min-height: 100vh;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+        .card, .list-group-item, .modal-content, .dropdown-menu {
+            background: var(--bg-secondary);
+            color: var(--text-primary) !important;
+            border-color: var(--border-color);
+        }
+        .text-muted {
+            color: var(--text-secondary) !important;
+        }
+        h1, h2, h3, h4, h5, h6 {
+            color: var(--text-primary) !important;
+        }
+        .card {
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        .price-lg {
+            font-size: 2.5rem;
+            font-weight: 700;
+            font-family: 'Courier New', monospace;
+        }
+        .text-green { color: var(--green) !important; }
+        .text-red { color: var(--red) !important; }
+        .text-yellow { color: var(--yellow) !important; }
+        .text-blue { color: var(--blue) !important; }
+        .bg-green { background: var(--green) !important; }
+        .bg-red { background: var(--red) !important; }
+
+        .signal-card {
+            transition: all 0.3s ease;
+            overflow: hidden;
+        }
+        .signal-long {
+            border-left: 4px solid var(--green);
+            background: linear-gradient(90deg, rgba(63,185,80,0.1) 0%, transparent 100%);
+        }
+        .signal-short {
+            border-left: 4px solid var(--red);
+            background: linear-gradient(90deg, rgba(248,81,73,0.1) 0%, transparent 100%);
+        }
+        .signal-exit {
+            border-left: 4px solid var(--yellow);
+            background: linear-gradient(90deg, rgba(210,153,34,0.1) 0%, transparent 100%);
+        }
+
+        .position-card {
+            border: 2px solid;
+            animation: glow 2s infinite;
+        }
+        .position-long { border-color: var(--green); }
+        .position-short { border-color: var(--red); }
+        @keyframes glow {
+            0%, 100% { box-shadow: 0 0 5px currentColor; }
+            50% { box-shadow: 0 0 20px currentColor; }
+        }
+
+        .indicator-bar {
+            height: 8px;
+            border-radius: 4px;
+            background: var(--bg-card);
+            overflow: hidden;
+        }
+        .indicator-fill {
+            height: 100%;
+            transition: width 0.3s ease;
+        }
+
+        .chart-container {
+            height: 350px;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .trade-log {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .trade-log::-webkit-scrollbar {
+            width: 6px;
+        }
+        .trade-log::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 3px;
+        }
+
+        .btn-trade {
+            padding: 12px 24px;
+            font-weight: 600;
+            border-radius: 8px;
+            transition: all 0.2s ease;
+        }
+        .btn-trade:hover {
+            transform: translateY(-2px);
+        }
+
+        .form-control, .form-select {
+            background: var(--bg-card);
+            border-color: var(--border-color);
+            color: var(--text-primary);
+        }
+        .form-control:focus {
+            background: var(--bg-card);
+            border-color: var(--blue);
+            color: var(--text-primary);
+            box-shadow: 0 0 0 0.2rem rgba(88,166,255,0.25);
+        }
+        input, select, textarea {
+            color: var(--text-primary) !important;
+        }
+
+        .toast-container {
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            z-index: 1100;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 6px;
+        }
+        .status-connected { background: var(--green); }
+        .status-disconnected { background: var(--red); }
+        .status-reconnecting { background: var(--yellow); animation: pulse 1s infinite; }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .pnl-positive { color: var(--green); }
+        .pnl-negative { color: var(--red); }
+
+        .recommendation-box {
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+        }
+        .recommendation-buy {
+            background: linear-gradient(135deg, rgba(63,185,80,0.2) 0%, rgba(63,185,80,0.1) 100%);
+            border: 2px solid var(--green);
+        }
+        .recommendation-sell {
+            background: linear-gradient(135deg, rgba(248,81,73,0.2) 0%, rgba(248,81,73,0.1) 100%);
+            border: 2px solid var(--red);
+        }
+        .recommendation-hold {
+            background: linear-gradient(135deg, rgba(139,148,158,0.2) 0%, rgba(139,148,158,0.1) 100%);
+            border: 2px solid var(--text-secondary);
+        }
+        .recommendation-exit {
+            background: linear-gradient(135deg, rgba(210,153,34,0.2) 0%, rgba(210,153,34,0.1) 100%);
+            border: 2px solid var(--yellow);
+        }
+
+        .positions-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .position-item {
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 8px;
+            background: var(--bg-card);
+        }
+        .position-item.long {
+            border-left: 4px solid var(--green);
+        }
+        .position-item.short {
+            border-left: 4px solid var(--red);
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useCallback, useMemo } = React;
+
+        // ========== Storage Helpers ==========
+        const useLocalStorage = (key, initialValue) => {
+            const [storedValue, setStoredValue] = useState(() => {
+                try {
+                    const item = window.localStorage.getItem(key);
+                    return item ? JSON.parse(item) : initialValue;
+                } catch (error) {
+                    console.error("Storage read error:", error);
+                    return initialValue;
+                }
+            });
+
+            const setValue = (value) => {
+                try {
+                    const valueToStore = value instanceof Function ? value(storedValue) : value;
+                    setStoredValue(valueToStore);
+                    window.localStorage.setItem(key, JSON.stringify(valueToStore));
+                } catch (error) {
+                    console.error("Storage write error:", error);
+                }
+            };
+
+            return [storedValue, setValue];
+        };
+
+        // ========== Technical Indicators ==========
+        const calculateSMA = (data, period) => {
+            if (data.length < period) return null;
+            const slice = data.slice(-period);
+            return slice.reduce((a, b) => a + b, 0) / period;
+        };
+
+        const calculateStdDev = (data, period, sma) => {
+            if (data.length < period || sma === null) return null;
+            const slice = data.slice(-period);
+            const variance = slice.reduce((sum, val) => sum + Math.pow(val - sma, 2), 0) / period;
+            return Math.sqrt(variance);
+        };
+
+        const calculateBollingerBands = (prices, period = 20, multiplier = 2) => {
+            const sma = calculateSMA(prices, period);
+            if (sma === null) return { upper: null, middle: null, lower: null };
+            const stdDev = calculateStdDev(prices, period, sma);
+            if (stdDev === null) return { upper: null, middle: null, lower: null };
+            return {
+                upper: sma + (stdDev * multiplier),
+                middle: sma,
+                lower: sma - (stdDev * multiplier)
+            };
+        };
+
+        const calculateRSI = (prices, period = 14) => {
+            if (prices.length < period + 1) return null;
+            let gains = 0, losses = 0;
+            for (let i = prices.length - period; i < prices.length; i++) {
+                const change = prices[i] - prices[i - 1];
+                if (change > 0) gains += change;
+                else losses += Math.abs(change);
+            }
+            const avgGain = gains / period;
+            const avgLoss = losses / period;
+            if (avgLoss === 0) return 100;
+            return 100 - (100 / (1 + (avgGain / avgLoss)));
+        };
+
+        const calculateEMA = (data, period) => {
+            if (data.length < period) return null;
+            const k = 2 / (period + 1);
+            let ema = data.slice(0, period).reduce((a, b) => a + b, 0) / period;
+            for (let i = period; i < data.length; i++) {
+                ema = data[i] * k + ema * (1 - k);
+            }
+            return ema;
+        };
+
+        const calculateMACD = (prices, fastPeriod = 12, slowPeriod = 26, signalPeriod = 9) => {
+            if (prices.length < slowPeriod + signalPeriod) return { macd: null, signal: null, histogram: null };
+            const fastEMA = calculateEMA(prices, fastPeriod);
+            const slowEMA = calculateEMA(prices, slowPeriod);
+            if (fastEMA === null || slowEMA === null) return { macd: null, signal: null, histogram: null };
+            const macd = fastEMA - slowEMA;
+            const signal = macd * 0.9;
+            return { macd, signal, histogram: macd - signal };
+        };
+
+        const calculateHistoricalBollingerBands = (candles, period = 20, multiplier = 2) => {
+            const prices = candles.map(c => c.close);
+            const result = [];
+
+            for (let i = 0; i < prices.length; i++) {
+                if (i < period - 1) continue;
+
+                const slice = prices.slice(i - period + 1, i + 1);
+                const sma = slice.reduce((a, b) => a + b, 0) / period;
+                const variance = slice.reduce((sum, val) => sum + Math.pow(val - sma, 2), 0) / period;
+                const stdDev = Math.sqrt(variance);
+
+                result.push({
+                    time: candles[i].time,
+                    upper: sma + (stdDev * multiplier),
+                    middle: sma,
+                    lower: sma - (stdDev * multiplier)
+                });
+            }
+            return result;
+        };
+
+        // ========== Header Component ==========
+        const Header = ({ connectionStatus, balance, totalPnL }) => (
+            <nav className="navbar navbar-dark mb-4" style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-color)' }}>
+                <div className="container-fluid px-4">
+                    <span className="navbar-brand mb-0 h4">
+                        <i className="bi bi-currency-bitcoin text-yellow me-2"></i>
+                        BTC Trading Advisor
+                    </span>
+                    <div className="d-flex align-items-center gap-4">
+                        <span className="text-muted">
+                            <i className="bi bi-wallet2 me-1"></i>
+                            Demo: <span className="text-white fw-bold">${balance.toLocaleString()}</span> USDT
+                            {totalPnL !== 0 && (
+                                <span className={`ms-2 ${totalPnL >= 0 ? 'text-green' : 'text-red'}`}>
+                                    ({totalPnL >= 0 ? '+' : ''}{totalPnL.toFixed(2)})
+                                </span>
+                            )}
+                        </span>
+                        <span>
+                            <span className={`status-dot ${
+                                connectionStatus === 'connected' ? 'status-connected' :
+                                connectionStatus === 'reconnecting' ? 'status-reconnecting' : 'status-disconnected'
+                            }`}></span>
+                            {connectionStatus === 'connected' ? 'Live' :
+                             connectionStatus === 'reconnecting' ? 'Reconnecting...' : 'Offline'}
+                        </span>
+                    </div>
+                </div>
+            </nav>
+        );
+
+        // ========== Price Display Component ==========
+        const PriceDisplay = ({ price, prevPrice, change24h }) => {
+            const isUp = price > prevPrice;
+            return (
+                <div className="card p-4 mb-4">
+                    <div className="d-flex justify-content-between align-items-center">
+                        <div>
+                            <small className="text-muted">BTC/USDT</small>
+                            <div className={`price-lg ${isUp ? 'text-green' : 'text-red'}`}>
+                                ${price ? price.toLocaleString('en-US', { minimumFractionDigits: 2 }) : '---'}
+                                <i className={`bi bi-caret-${isUp ? 'up' : 'down'}-fill ms-2 fs-4`}></i>
+                            </div>
+                        </div>
+                        <div className="text-end">
+                            <small className="text-muted d-block">24h Change</small>
+                            <span className={change24h >= 0 ? 'text-green' : 'text-red'}>
+                                {change24h >= 0 ? '+' : ''}{change24h?.toFixed(2) || '0.00'}%
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // ========== Chart Component ==========
+        const TradingChart = ({ candles, bollingerBands }) => {
+            const chartContainerRef = useRef(null);
+            const chartRef = useRef(null);
+            const candleSeriesRef = useRef(null);
+            const bbUpperRef = useRef(null);
+            const bbMiddleRef = useRef(null);
+            const bbLowerRef = useRef(null);
+
+            useEffect(() => {
+                if (!chartContainerRef.current) return;
+
+                const chart = LightweightCharts.createChart(chartContainerRef.current, {
+                    layout: {
+                        background: { type: 'solid', color: '#121212' },
+                        textColor: '#e6edf3',
+                    },
+                    grid: {
+                        vertLines: { color: '#333333' },
+                        horzLines: { color: '#333333' },
+                    },
+                    width: chartContainerRef.current.clientWidth,
+                    height: 350,
+                    timeScale: { timeVisible: true, secondsVisible: false },
+                    crosshair: { mode: 0 },
+                });
+
+                const candleSeries = chart.addCandlestickSeries({
+                    upColor: '#2ea043',
+                    downColor: '#da3633',
+                    borderVisible: false,
+                    wickUpColor: '#2ea043',
+                    wickDownColor: '#da3633',
+                });
+
+                const bbUpper = chart.addLineSeries({
+                    color: 'rgba(88, 166, 255, 0.5)',
+                    lineWidth: 1,
+                    lineStyle: 2,
+                });
+
+                const bbMiddle = chart.addLineSeries({
+                    color: 'rgba(88, 166, 255, 0.8)',
+                    lineWidth: 1,
+                });
+
+                const bbLower = chart.addLineSeries({
+                    color: 'rgba(88, 166, 255, 0.5)',
+                    lineWidth: 1,
+                    lineStyle: 2,
+                });
+
+                chartRef.current = chart;
+                candleSeriesRef.current = candleSeries;
+                bbUpperRef.current = bbUpper;
+                bbMiddleRef.current = bbMiddle;
+                bbLowerRef.current = bbLower;
+
+                const handleResize = () => {
+                    if (chartContainerRef.current) {
+                        chart.applyOptions({ width: chartContainerRef.current.clientWidth });
+                    }
+                };
+                window.addEventListener('resize', handleResize);
+
+                return () => {
+                    window.removeEventListener('resize', handleResize);
+                    chart.remove();
+                };
+            }, []);
+
+            useEffect(() => {
+                if (candleSeriesRef.current && candles.length > 0) {
+                    const sortedCandles = [...candles].sort((a, b) => a.time - b.time);
+                    const uniqueCandles = sortedCandles.filter((v, i, a) => i === 0 || v.time !== a[i-1].time);
+                    candleSeriesRef.current.setData(uniqueCandles);
+                }
+            }, [candles]);
+
+            useEffect(() => {
+                if (bollingerBands.length > 0) {
+                    const sortedBB = [...bollingerBands].sort((a, b) => a.time - b.time);
+                    const uniqueBB = sortedBB.filter((v, i, a) => i === 0 || v.time !== a[i-1].time);
+
+                    bbUpperRef.current?.setData(uniqueBB.map(b => ({ time: b.time, value: b.upper })).filter(b => b.value));
+                    bbMiddleRef.current?.setData(uniqueBB.map(b => ({ time: b.time, value: b.middle })).filter(b => b.value));
+                    bbLowerRef.current?.setData(uniqueBB.map(b => ({ time: b.time, value: b.lower })).filter(b => b.value));
+                }
+            }, [bollingerBands]);
+
+            return <div ref={chartContainerRef} className="chart-container" />;
+        };
+
+        // ========== Indicators Panel ==========
+        const IndicatorsPanel = ({ rsi, macd, bb, price }) => {
+            const rsiColor = rsi < 30 ? 'green' : rsi > 70 ? 'red' : 'blue';
+            const bbPosition = bb.middle ? ((price - bb.lower) / (bb.upper - bb.lower) * 100) : 50;
+
+            return (
+                <div className="card p-3 mb-4">
+                    <h6 className="text-muted mb-3"><i className="bi bi-graph-up me-2"></i>Technical Indicators</h6>
+                    <div className="mb-3">
+                        <div className="d-flex justify-content-between mb-1">
+                            <small>RSI (14)</small>
+                            <small className={`text-${rsiColor}`}>{rsi?.toFixed(1) || '--'}</small>
+                        </div>
+                        <div className="indicator-bar">
+                            <div
+                                className={`indicator-fill bg-${rsiColor}`}
+                                style={{ width: `${rsi || 50}%` }}
+                            ></div>
+                        </div>
+                        <div className="d-flex justify-content-between mt-1">
+                            <small className="text-muted" style={{fontSize: '10px'}}>Oversold (30)</small>
+                            <small className="text-muted" style={{fontSize: '10px'}}>Overbought (70)</small>
+                        </div>
+                    </div>
+
+                    <div className="mb-3">
+                        <div className="d-flex justify-content-between mb-1">
+                            <small>Bollinger Position</small>
+                            <small className="text-blue">{bbPosition.toFixed(1)}%</small>
+                        </div>
+                        <div className="indicator-bar">
+                            <div className="indicator-fill bg-blue" style={{ width: `${Math.min(100, Math.max(0, bbPosition))}%` }}></div>
+                        </div>
+                        <div className="d-flex justify-content-between mt-1">
+                            <small className="text-muted" style={{fontSize: '10px'}}>Lower Band</small>
+                            <small className="text-muted" style={{fontSize: '10px'}}>Upper Band</small>
+                        </div>
+                    </div>
+
+                    <div className="row text-center small">
+                        <div className="col-4">
+                            <div className="text-muted">BB Upper</div>
+                            <div className="text-blue">${bb.upper?.toLocaleString() || '--'}</div>
+                        </div>
+                        <div className="col-4">
+                            <div className="text-muted">BB Middle</div>
+                            <div className="text-white">${bb.middle?.toLocaleString() || '--'}</div>
+                        </div>
+                        <div className="col-4">
+                            <div className="text-muted">BB Lower</div>
+                            <div className="text-blue">${bb.lower?.toLocaleString() || '--'}</div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // ========== Recommendation Panel ==========
+        const RecommendationPanel = ({ recommendation, signalStrength }) => {
+             const getRecommendationClass = () => {
+                switch(recommendation.action) {
+                    case 'BUY': return 'recommendation-buy';
+                    case 'SELL': return 'recommendation-sell';
+                    case 'EXIT': return 'recommendation-exit';
+                    default: return 'recommendation-hold';
+                }
+            };
+
+            const getIcon = () => {
+                switch(recommendation.action) {
+                    case 'BUY': return 'bi-graph-up-arrow';
+                    case 'SELL': return 'bi-graph-down-arrow';
+                    case 'EXIT': return 'bi-box-arrow-right';
+                    default: return 'bi-pause-circle';
+                }
+            };
+
+            return (
+                <div className="card p-4 mb-4">
+                    <h6 className="text-muted mb-3"><i className="bi bi-lightbulb me-2"></i>Trading Recommendation</h6>
+
+                    <div className={`recommendation-box ${getRecommendationClass()}`}>
+                        <i className={`bi ${getIcon()} fs-1 d-block mb-2`}></i>
+                        <h3 className="mb-2">{recommendation.action}</h3>
+                        <p className="mb-1 text-muted">{recommendation.reason}</p>
+                        {signalStrength > 0 && (
+                            <div className="mt-2">
+                                <small className="text-muted">Signal Strength: </small>
+                                <span className={signalStrength >= 3 ? 'text-green' : signalStrength >= 2 ? 'text-yellow' : 'text-muted'}>
+                                    {'★'.repeat(signalStrength)}{'☆'.repeat(Math.max(0, 5 - signalStrength))}
+                                </span>
+                            </div>
+                        )}
+                    </div>
+
+                    {recommendation.action !== 'HOLD' && (
+                        <div className="mt-3 p-3 rounded" style={{background: 'var(--bg-card)'}}>
+                            <div className="row text-center small">
+                                {(recommendation.action === 'BUY' || recommendation.action === 'SELL') && (
+                                    <>
+                                        <div className="col-4">
+                                            <div className="text-muted">Entry</div>
+                                            <div className="text-white">${recommendation.entry?.toLocaleString()}</div>
+                                        </div>
+                                        <div className="col-4">
+                                            <div className="text-muted">Take Profit</div>
+                                            <div className="text-green">${recommendation.takeProfit?.toLocaleString()}</div>
+                                        </div>
+                                        <div className="col-4">
+                                            <div className="text-muted">Stop Loss</div>
+                                            <div className="text-red">${recommendation.stopLoss?.toLocaleString()}</div>
+                                        </div>
+                                    </>
+                                )}
+                                {recommendation.action === 'EXIT' && (
+                                    <div className="col-12">
+                                        <div className="text-muted">Exit Reason</div>
+                                        <div className="text-yellow">{recommendation.exitReason}</div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        // ========== Multiple Positions Panel ==========
+        const PositionsPanel = ({ positions, onClose, currentPrice }) => {
+            const totalPnL = positions.reduce((sum, pos) => {
+                const pnl = pos.type === 'LONG'
+                    ? (currentPrice - pos.entryPrice) * pos.size
+                    : (pos.entryPrice - currentPrice) * pos.size;
+                return sum + pnl;
+            }, 0);
+
+            return (
+                <div className="card p-4 mb-4">
+                    <div className="d-flex justify-content-between align-items-center mb-3">
+                        <h6 className="mb-0"><i className="bi bi-briefcase me-2"></i>Active Positions ({positions.length})</h6>
+                        {positions.length > 0 && (
+                            <span className={`fw-bold ${totalPnL >= 0 ? 'text-green' : 'text-red'}`}>
+                                Total: {totalPnL >= 0 ? '+' : ''}{totalPnL.toFixed(2)} USDT
+                            </span>
+                        )}
+                    </div>
+
+                    {positions.length === 0 ? (
+                        <div className="text-center py-4 text-muted">
+                            <i className="bi bi-inbox fs-1 d-block mb-2"></i>
+                            No active positions
+                        </div>
+                    ) : (
+                        <div className="positions-list">
+                            {positions.map((pos, idx) => {
+                                const pnl = pos.type === 'LONG'
+                                    ? (currentPrice - pos.entryPrice) * pos.size
+                                    : (pos.entryPrice - currentPrice) * pos.size;
+                                const pnlPercent = pos.type === 'LONG'
+                                    ? ((currentPrice - pos.entryPrice) / pos.entryPrice) * 100
+                                    : ((pos.entryPrice - currentPrice) / pos.entryPrice) * 100;
+
+                                return (
+                                    <div key={pos.id} className={`position-item ${pos.type.toLowerCase()}`}>
+                                        <div className="d-flex justify-content-between align-items-center mb-2">
+                                            <span>
+                                                <span className={`badge bg-${pos.type === 'LONG' ? 'success' : 'danger'} me-2`}>
+                                                    {pos.type}
+                                                </span>
+                                                <small className="text-muted">#{pos.id}</small>
+                                            </span>
+                                            <button
+                                                className="btn btn-outline-secondary btn-sm"
+                                                onClick={() => onClose(pos.id)}
+                                            >
+                                                Close
+                                            </button>
+                                        </div>
+                                        <div className="row text-center small">
+                                            <div className="col-3">
+                                                <div className="text-muted">Entry</div>
+                                                <div>${pos.entryPrice.toLocaleString()}</div>
+                                            </div>
+                                            <div className="col-3">
+                                                <div className="text-muted">Size</div>
+                                                <div>{pos.size.toFixed(4)}</div>
+                                            </div>
+                                            <div className="col-3">
+                                                <div className="text-muted">TP</div>
+                                                <div className="text-green">${pos.takeProfit.toLocaleString()}</div>
+                                            </div>
+                                            <div className="col-3">
+                                                <div className="text-muted">P&L</div>
+                                                <div className={pnl >= 0 ? 'text-green' : 'text-red'}>
+                                                    {pnl >= 0 ? '+' : ''}{pnl.toFixed(2)}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        {pos.trailingActive && (
+                                            <div className="mt-2 text-center">
+                                                <small className="text-yellow"><i className="bi bi-shield-check me-1"></i>Trailing Active</small>
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        // ========== Trade History ==========
+        const TradeHistory = ({ trades }) => (
+            <div className="card p-3">
+                <h6 className="text-muted mb-3"><i className="bi bi-clock-history me-2"></i>Trade History</h6>
+                <div className="trade-log">
+                    {trades.length === 0 ? (
+                        <div className="text-center text-muted py-3">No trades yet</div>
+                    ) : (
+                        trades.map((trade, idx) => (
+                            <div key={idx} className={`p-2 mb-2 rounded signal-card signal-${trade.action.toLowerCase()}`}>
+                                <div className="d-flex justify-content-between">
+                                    <div>
+                                        <span className={`badge bg-${trade.action === 'LONG' || trade.action === 'BUY' ? 'success' : trade.action === 'SHORT' || trade.action === 'SELL' ? 'danger' : 'warning'} me-2`}>
+                                            {trade.action}
+                                        </span>
+                                        <small>{trade.time}</small>
+                                    </div>
+                                    <div className="text-end">
+                                        <div>${trade.price?.toLocaleString() || '---'}</div>
+                                        {trade.pnl !== undefined && (
+                                            <small className={trade.pnl >= 0 ? 'text-green' : 'text-red'}>
+                                                {trade.pnl >= 0 ? '+' : ''}{trade.pnl.toFixed(2)} USDT
+                                            </small>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        ))
+                    )}
+                </div>
+            </div>
+        );
+
+        // ========== Settings Panel ==========
+        const SettingsPanel = ({ settings, setSettings }) => (
+            <div className="card p-3 mb-4">
+                <h6 className="text-muted mb-3"><i className="bi bi-gear me-2"></i>Strategy Settings</h6>
+                <div className="row g-2">
+                    <div className="col-6">
+                        <label className="form-label small">Take Profit %</label>
+                        <input
+                            type="number"
+                            className="form-control form-control-sm"
+                            value={settings.takeProfitPercent}
+                            onChange={(e) => setSettings({...settings, takeProfitPercent: parseFloat(e.target.value) || 2})}
+                            step="0.5"
+                            min="0.5"
+                        />
+                    </div>
+                    <div className="col-6">
+                        <label className="form-label small">Stop Loss %</label>
+                        <input
+                            type="number"
+                            className="form-control form-control-sm"
+                            value={settings.stopLossPercent}
+                            onChange={(e) => setSettings({...settings, stopLossPercent: parseFloat(e.target.value) || 1})}
+                            step="0.5"
+                            min="0.5"
+                        />
+                    </div>
+                    <div className="col-6">
+                        <label className="form-label small">Max Positions</label>
+                        <input
+                            type="number"
+                            className="form-control form-control-sm"
+                            value={settings.maxPositions}
+                            onChange={(e) => setSettings({...settings, maxPositions: parseInt(e.target.value) || 3})}
+                            min="1"
+                            max="10"
+                        />
+                    </div>
+                    <div className="col-6">
+                        <label className="form-label small">Trade Size (USDT)</label>
+                        <input
+                            type="number"
+                            className="form-control form-control-sm"
+                            value={settings.tradeSize}
+                            onChange={(e) => setSettings({...settings, tradeSize: parseFloat(e.target.value) || 100})}
+                            step="100"
+                            min="100"
+                        />
+                    </div>
+                    <div className="col-6">
+                        <label className="form-label small">RSI Buy Threshold</label>
+                        <input
+                            type="number"
+                            className="form-control form-control-sm"
+                            value={settings.rsiBuyThreshold}
+                            onChange={(e) => setSettings({...settings, rsiBuyThreshold: parseFloat(e.target.value) || 35})}
+                            min="20"
+                            max="50"
+                        />
+                    </div>
+                    <div className="col-6">
+                        <label className="form-label small">RSI Sell Threshold</label>
+                        <input
+                            type="number"
+                            className="form-control form-control-sm"
+                            value={settings.rsiSellThreshold}
+                            onChange={(e) => setSettings({...settings, rsiSellThreshold: parseFloat(e.target.value) || 65})}
+                            min="50"
+                            max="80"
+                        />
+                    </div>
+                </div>
+                <div className="mt-3">
+                    <div className="form-check form-switch">
+                        <input
+                            className="form-check-input"
+                            type="checkbox"
+                            checked={settings.soundEnabled}
+                            onChange={(e) => setSettings({...settings, soundEnabled: e.target.checked})}
+                        />
+                        <label className="form-check-label small">Sound Alerts</label>
+                    </div>
+                    <div className="form-check form-switch">
+                        <input
+                            className="form-check-input"
+                            type="checkbox"
+                            checked={settings.autoTrade}
+                            onChange={(e) => setSettings({...settings, autoTrade: e.target.checked})}
+                        />
+                        <label className="form-check-label small">Auto Trade (Demo)</label>
+                    </div>
+                    <div className="form-check form-switch">
+                        <input
+                            className="form-check-input"
+                            type="checkbox"
+                            checked={settings.useSoftSignals}
+                            onChange={(e) => setSettings({...settings, useSoftSignals: e.target.checked})}
+                        />
+                        <label className="form-check-label small">Use Soft Signals (Less strict conditions)</label>
+                    </div>
+                </div>
+            </div>
+        );
+
+        // ========== Toast Component ==========
+        const ToastContainer = ({ toasts, removeToast }) => (
+            <div className="toast-container">
+                {toasts.map((toast) => (
+                    <div key={toast.id} className={`toast show mb-2 bg-${toast.type === 'success' ? 'success' : toast.type === 'danger' ? 'danger' : 'warning'}`}>
+                        <div className="toast-header bg-dark text-white">
+                            <i className={`bi ${toast.icon} me-2`}></i>
+                            <strong className="me-auto">{toast.title}</strong>
+                            <button className="btn-close btn-close-white" onClick={() => removeToast(toast.id)}></button>
+                        </div>
+                        <div className="toast-body text-white">{toast.message}</div>
+                    </div>
+                ))}
+            </div>
+        );
+
+        // ========== Main App ==========
+        const App = () => {
+            const [connectionStatus, setConnectionStatus] = useState('disconnected');
+            const [retryCount, setRetryCount] = useState(0);
+            const hasShownConnectedToast = useRef(false);
+
+            const [currentPrice, setCurrentPrice] = useState(null);
+            const [prevPrice, setPrevPrice] = useState(null);
+            const [change24h, setChange24h] = useState(0);
+
+            // Persistent State
+            const [candles, setCandles] = useLocalStorage('btc_advisor_candles', []);
+            const [trades, setTrades] = useLocalStorage('btc_advisor_trades', []);
+            const [balance, setBalance] = useLocalStorage('btc_advisor_balance', 10000);
+            const [positions, setPositions] = useLocalStorage('btc_advisor_positions', []);
+            const [settings, setSettings] = useLocalStorage('btc_advisor_settings', {
+                takeProfitPercent: 2.0,
+                stopLossPercent: 1.0,
+                trailingTrigger: 1.0,
+                tradeSize: 1000,
+                soundEnabled: true,
+                autoTrade: false,
+                maxPositions: 5,
+                rsiBuyThreshold: 40,
+                rsiSellThreshold: 60,
+                useSoftSignals: true
+            });
+
+            // Refs for values accessed in callbacks
+            const positionsRef = useRef(positions);
+            const settingsRef = useRef(settings);
+            const lastSignalRef = useRef(null);
+            const lastAutoTradeTimeRef = useRef(0);
+            const positionIdCounter = useRef(Date.now());
+
+            // Sync Refs
+            useEffect(() => { positionsRef.current = positions; }, [positions]);
+            useEffect(() => { settingsRef.current = settings; }, [settings]);
+
+            // Derived State
+            const [prices, setPrices] = useState([]);
+            const [bollingerData, setBollingerData] = useState([]);
+            const [rsi, setRsi] = useState(null);
+            const [bb, setBb] = useState({ upper: null, middle: null, lower: null });
+            const [macd, setMacd] = useState({ macd: null, signal: null });
+            const [signalStrength, setSignalStrength] = useState(0);
+
+            const [toasts, setToasts] = useState([]);
+            const [recommendation, setRecommendation] = useState({ action: 'HOLD', reason: 'Waiting for data...' });
+
+            const wsRef = useRef(null);
+
+            // Calculate total P&L
+            const totalPnL = useMemo(() => {
+                if (!currentPrice) return 0;
+                return positions.reduce((sum, pos) => {
+                    const pnl = pos.type === 'LONG'
+                        ? (currentPrice - pos.entryPrice) * pos.size
+                        : (pos.entryPrice - currentPrice) * pos.size;
+                    return sum + pnl;
+                }, 0);
+            }, [positions, currentPrice]);
+
+            // Restore derived state from candles on mount
+            useEffect(() => {
+                if (candles.length > 0) {
+                    const closePrices = candles.map(c => c.close);
+                    setPrices(closePrices);
+
+                    const newRsi = calculateRSI(closePrices, 14);
+                    const newBb = calculateBollingerBands(closePrices, 20, 2);
+                    const newMacd = calculateMACD(closePrices);
+
+                    setRsi(newRsi);
+                    setBb(newBb);
+                    setMacd(newMacd);
+
+                    const historyBb = calculateHistoricalBollingerBands(candles, 20, 2);
+                    setBollingerData(historyBb);
+
+                    const lastCandle = candles[candles.length - 1];
+                    if (lastCandle) {
+                        setCurrentPrice(lastCandle.close);
+                        setPrevPrice(lastCandle.open);
+                    }
+                }
+            }, []);
+
+            // Play sound
+            const playSound = useCallback((type) => {
+                if (!settingsRef.current.soundEnabled) return;
+                try {
+                    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.frequency.value = type === 'buy' ? 800 : type === 'sell' ? 400 : 600;
+                    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+                    osc.start(ctx.currentTime);
+                    osc.stop(ctx.currentTime + 0.3);
+                } catch (e) {}
+            }, []);
+
+            // Add toast
+            const addToast = useCallback((title, message, type, icon) => {
+                const id = Date.now();
+                setToasts(prev => [...prev, { id, title, message, type, icon }]);
+                setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 5000);
+            }, []);
+
+            // Generate recommendation with improved logic
+            const generateRecommendation = useCallback((price, rsiVal, bbVal, currentPositions, pricesArray) => {
+                const s = settingsRef.current;
+
+                if (!price || rsiVal === null || !bbVal.upper) {
+                    return { action: 'HOLD', reason: 'Collecting data...', strength: 0 };
+                }
+
+                // Check if any position needs exit
+                for (const pos of currentPositions) {
+                    const pnlPercent = pos.type === 'LONG'
+                        ? ((price - pos.entryPrice) / pos.entryPrice) * 100
+                        : ((pos.entryPrice - price) / pos.entryPrice) * 100;
+
+                    if (pnlPercent >= s.takeProfitPercent) {
+                        return { action: 'EXIT', reason: `Take Profit on #${pos.id}!`, exitReason: 'Take Profit', positionId: pos.id, strength: 5 };
+                    }
+
+                    if (pnlPercent <= -s.stopLossPercent) {
+                        return { action: 'EXIT', reason: `Stop Loss on #${pos.id}!`, exitReason: 'Stop Loss', positionId: pos.id, strength: 5 };
+                    }
+
+                    if (pos.type === 'LONG' && rsiVal > 75) {
+                        return { action: 'EXIT', reason: `RSI overbought - exit #${pos.id}`, exitReason: 'RSI Signal', positionId: pos.id, strength: 4 };
+                    }
+                    if (pos.type === 'SHORT' && rsiVal < 25) {
+                        return { action: 'EXIT', reason: `RSI oversold - exit #${pos.id}`, exitReason: 'RSI Signal', positionId: pos.id, strength: 4 };
+                    }
+                }
+
+                // Check for new entry signals
+                if (currentPositions.length < s.maxPositions) {
+                    const bbLowerPercent = ((price - bbVal.lower) / bbVal.lower) * 100;
+                    const bbUpperPercent = ((bbVal.upper - price) / bbVal.upper) * 100;
+
+                    let buyStrength = 0;
+                    let sellStrength = 0;
+                    let buyReasons = [];
+                    let sellReasons = [];
+
+                    // RSI signals
+                    if (rsiVal < s.rsiBuyThreshold) {
+                        buyStrength += rsiVal < 30 ? 2 : 1;
+                        buyReasons.push(`RSI=${rsiVal.toFixed(1)}`);
+                    }
+                    if (rsiVal > s.rsiSellThreshold) {
+                        sellStrength += rsiVal > 70 ? 2 : 1;
+                        sellReasons.push(`RSI=${rsiVal.toFixed(1)}`);
+                    }
+
+                    // Bollinger Band signals
+                    if (price < bbVal.lower) {
+                        buyStrength += 2;
+                        buyReasons.push('Below BB Lower');
+                    } else if (bbLowerPercent < 1) {
+                        buyStrength += 1;
+                        buyReasons.push('Near BB Lower');
+                    }
+
+                    if (price > bbVal.upper) {
+                        sellStrength += 2;
+                        sellReasons.push('Above BB Upper');
+                    } else if (bbUpperPercent < 1) {
+                        sellStrength += 1;
+                        sellReasons.push('Near BB Upper');
+                    }
+
+                    // MACD momentum (check recent price trend)
+                    if (pricesArray.length >= 5) {
+                        const recentChange = (price - pricesArray[pricesArray.length - 5]) / pricesArray[pricesArray.length - 5] * 100;
+                        if (recentChange < -0.5) {
+                            buyStrength += 1;
+                            buyReasons.push('Falling momentum');
+                        }
+                        if (recentChange > 0.5) {
+                            sellStrength += 1;
+                            sellReasons.push('Rising momentum');
+                        }
+                    }
+
+                    // Determine signal threshold
+                    const threshold = s.useSoftSignals ? 2 : 3;
+
+                    if (buyStrength >= threshold && buyStrength > sellStrength) {
+                        const entry = price;
+                        return {
+                            action: 'BUY',
+                            reason: buyReasons.join(' + '),
+                            entry,
+                            takeProfit: entry * (1 + s.takeProfitPercent/100),
+                            stopLoss: entry * (1 - s.stopLossPercent/100),
+                            strength: buyStrength
+                        };
+                    }
+
+                    if (sellStrength >= threshold && sellStrength > buyStrength) {
+                        const entry = price;
+                        return {
+                            action: 'SELL',
+                            reason: sellReasons.join(' + '),
+                            entry,
+                            takeProfit: entry * (1 - s.takeProfitPercent/100),
+                            stopLoss: entry * (1 + s.stopLossPercent/100),
+                            strength: sellStrength
+                        };
+                    }
+
+                    // Approaching signals
+                    if (buyStrength >= 1) {
+                        return { action: 'HOLD', reason: `Approaching BUY: ${buyReasons.join(', ')}`, strength: buyStrength };
+                    }
+                    if (sellStrength >= 1) {
+                        return { action: 'HOLD', reason: `Approaching SELL: ${sellReasons.join(', ')}`, strength: sellStrength };
+                    }
+                }
+
+                // Managing existing positions
+                if (currentPositions.length > 0) {
+                    const posTypes = currentPositions.map(p => p.type).join(', ');
+                    return { action: 'HOLD', reason: `Managing ${currentPositions.length} position(s): ${posTypes}`, strength: 0 };
+                }
+
+                return { action: 'HOLD', reason: 'No clear signal', strength: 0 };
+            }, []);
+
+            // Execute trade
+            const executeTrade = useCallback((action, price) => {
+                if (!price) return;
+                const time = new Date().toLocaleTimeString('ja-JP');
+                const s = settingsRef.current;
+                const currentPositions = positionsRef.current;
+
+                if (currentPositions.length >= s.maxPositions) {
+                    addToast('Max Positions Reached', `Cannot open more than ${s.maxPositions} positions`, 'warning', 'bi-exclamation-triangle');
+                    return;
+                }
+
+                if (action === 'BUY') {
+                    const size = s.tradeSize / price;
+                    const newPosition = {
+                        id: positionIdCounter.current++,
+                        type: 'LONG',
+                        entryPrice: price,
+                        size,
+                        takeProfit: price * (1 + s.takeProfitPercent / 100),
+                        stopLoss: price * (1 - s.stopLossPercent / 100),
+                        trailingActive: false,
+                        openTime: time
+                    };
+                    setPositions(prev => [...prev, newPosition]);
+                    setBalance(prev => prev - s.tradeSize);
+                    setTrades(prev => [{ action: 'LONG', price, time }, ...prev].slice(0, 50));
+                    addToast('Position Opened', `LONG #${newPosition.id} at $${price.toLocaleString()}`, 'success', 'bi-graph-up-arrow');
+                    playSound('buy');
+                } else if (action === 'SELL') {
+                    const size = s.tradeSize / price;
+                    const newPosition = {
+                        id: positionIdCounter.current++,
+                        type: 'SHORT',
+                        entryPrice: price,
+                        size,
+                        takeProfit: price * (1 - s.takeProfitPercent / 100),
+                        stopLoss: price * (1 + s.stopLossPercent / 100),
+                        trailingActive: false,
+                        openTime: time
+                    };
+                    setPositions(prev => [...prev, newPosition]);
+                    setBalance(prev => prev - s.tradeSize);
+                    setTrades(prev => [{ action: 'SHORT', price, time }, ...prev].slice(0, 50));
+                    addToast('Position Opened', `SHORT #${newPosition.id} at $${price.toLocaleString()}`, 'danger', 'bi-graph-down-arrow');
+                    playSound('sell');
+                }
+            }, [addToast, playSound, setPositions, setBalance, setTrades]);
+
+            // Close position by ID
+            const closePosition = useCallback((positionId, price) => {
+                const currentPositions = positionsRef.current;
+                const pos = currentPositions.find(p => p.id === positionId);
+                if (!pos || !price) return;
+
+                const pnl = pos.type === 'LONG'
+                    ? (price - pos.entryPrice) * pos.size
+                    : (pos.entryPrice - price) * pos.size;
+
+                const time = new Date().toLocaleTimeString('ja-JP');
+                setBalance(prev => prev + settingsRef.current.tradeSize + pnl);
+                setTrades(prev => [{ action: 'EXIT', price, time, pnl, positionId }, ...prev].slice(0, 50));
+                addToast('Position Closed', `#${positionId} P&L: ${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)} USDT`, pnl >= 0 ? 'success' : 'danger', 'bi-box-arrow-right');
+                playSound(pnl >= 0 ? 'buy' : 'sell');
+                setPositions(prev => prev.filter(p => p.id !== positionId));
+            }, [addToast, playSound, setBalance, setTrades, setPositions]);
+
+            // Close all positions
+            const closeAllPositions = useCallback((price) => {
+                const currentPositions = positionsRef.current;
+                currentPositions.forEach(pos => closePosition(pos.id, price));
+            }, [closePosition]);
+
+            // Update indicators and check for trades on every price update
+            const updateIndicatorsAndCheck = useCallback((price, pricesArray) => {
+                const newRsi = calculateRSI(pricesArray, 14);
+                const newBb = calculateBollingerBands(pricesArray, 20, 2);
+                const newMacd = calculateMACD(pricesArray);
+
+                setRsi(newRsi);
+                setBb(newBb);
+                setMacd(newMacd);
+
+                const rec = generateRecommendation(price, newRsi, newBb, positionsRef.current, pricesArray);
+                setRecommendation(rec);
+                setSignalStrength(rec.strength || 0);
+
+                // Auto trade logic - with cooldown to prevent rapid trading
+                const now = Date.now();
+                const cooldown = 10000; // 10 second cooldown between auto trades
+
+                if (settingsRef.current.autoTrade && (now - lastAutoTradeTimeRef.current) > cooldown) {
+                    if (rec.action === 'BUY' || rec.action === 'SELL') {
+                        executeTrade(rec.action, price);
+                        lastAutoTradeTimeRef.current = now;
+                    } else if (rec.action === 'EXIT' && rec.positionId) {
+                        closePosition(rec.positionId, price);
+                        lastAutoTradeTimeRef.current = now;
+                    }
+                }
+
+                // Signal notifications
+                if ((rec.action === 'BUY' || rec.action === 'SELL') && rec.action !== lastSignalRef.current) {
+                    lastSignalRef.current = rec.action;
+                    playSound(rec.action === 'BUY' ? 'buy' : 'sell');
+                    addToast(`${rec.action} Signal!`, rec.reason, rec.action === 'BUY' ? 'success' : 'danger', rec.action === 'BUY' ? 'bi-graph-up-arrow' : 'bi-graph-down-arrow');
+                } else if (rec.action === 'HOLD' || rec.action === 'EXIT') {
+                    lastSignalRef.current = null;
+                }
+            }, [generateRecommendation, executeTrade, closePosition, playSound, addToast]);
+
+            // WebSocket Connection Manager
+            useEffect(() => {
+                let ws = null;
+                let reconnectTimeout = null;
+                let shouldReconnect = true;
+
+                const connect = () => {
+                    if (!shouldReconnect) return;
+
+                    if (wsRef.current) {
+                        wsRef.current.close();
+                    }
+
+                    ws = new WebSocket('wss://stream.binance.com:9443/ws/btcusdt@kline_1m');
+                    wsRef.current = ws;
+
+                    ws.onopen = () => {
+                        setConnectionStatus('connected');
+                        setRetryCount(0);
+                        // Only show toast once per session
+                        if (!hasShownConnectedToast.current) {
+                            addToast('Connected', 'Live data streaming', 'success', 'bi-wifi');
+                            hasShownConnectedToast.current = true;
+                        }
+                    };
+
+                    ws.onmessage = (event) => {
+                        const data = JSON.parse(event.data);
+                        const k = data.k;
+                        const close = parseFloat(k.c);
+                        const open = parseFloat(k.o);
+                        const high = parseFloat(k.h);
+                        const low = parseFloat(k.l);
+                        const time = Math.floor(k.t / 1000);
+
+                        setPrevPrice(prev => prev || close);
+                        setCurrentPrice(close);
+
+                        setCandles(prev => {
+                            const currentCandles = Array.isArray(prev) ? [...prev] : [];
+                            const lastCandle = currentCandles[currentCandles.length - 1];
+                            if (lastCandle && lastCandle.time === time) {
+                                currentCandles[currentCandles.length - 1] = { time, open, high, low, close };
+                            } else {
+                                currentCandles.push({ time, open, high, low, close });
+                            }
+                            return currentCandles.slice(-100);
+                        });
+
+                        // Update prices array for real-time indicator calculation
+                        setPrices(prev => {
+                            let newPrices;
+                            const currentPrices = [...prev];
+
+                            if (k.x) {
+                                // Candle closed - add new price
+                                newPrices = [...currentPrices, close].slice(-100);
+
+                                // Update Bollinger band chart data on candle close
+                                const newBb = calculateBollingerBands(newPrices, 20, 2);
+                                setBollingerData(prev => [...prev, { time, ...newBb }].slice(-100));
+                            } else {
+                                // Candle still open - update last price for real-time calculation
+                                if (currentPrices.length > 0) {
+                                    newPrices = [...currentPrices.slice(0, -1), close];
+                                } else {
+                                    newPrices = [close];
+                                }
+                            }
+
+                            // Update indicators on every tick for responsiveness
+                            updateIndicatorsAndCheck(close, newPrices);
+
+                            return newPrices;
+                        });
+                    };
+
+                    ws.onclose = () => {
+                        if (!shouldReconnect) return;
+                        setConnectionStatus('reconnecting');
+                        hasShownConnectedToast.current = false; // Reset to show toast on reconnect
+
+                        const delay = Math.min(30000, 2000 * Math.pow(2, retryCount));
+                        console.log(`WebSocket closed. Reconnecting in ${delay}ms... (Attempt ${retryCount + 1})`);
+
+                        reconnectTimeout = setTimeout(() => {
+                            setRetryCount(c => c + 1);
+                        }, delay);
+                    };
+
+                    ws.onerror = (err) => {
+                        console.error('WebSocket Error:', err);
+                        ws.close();
+                    };
+                };
+
+                connect();
+
+                return () => {
+                    shouldReconnect = false;
+                    if (wsRef.current) wsRef.current.close();
+                    if (reconnectTimeout) clearTimeout(reconnectTimeout);
+                };
+            }, [retryCount, setCandles, addToast, updateIndicatorsAndCheck]);
+
+            // Trailing stop logic
+            useEffect(() => {
+                if (positions.length === 0 || !currentPrice) return;
+
+                positions.forEach(pos => {
+                    const pnlPercent = pos.type === 'LONG'
+                         ? ((currentPrice - pos.entryPrice) / pos.entryPrice) * 100
+                         : ((pos.entryPrice - currentPrice) / pos.entryPrice) * 100;
+
+                    if (pnlPercent >= settings.trailingTrigger && !pos.trailingActive) {
+                        setPositions(prev => prev.map(p =>
+                            p.id === pos.id ? {...p, trailingActive: true, stopLoss: p.entryPrice} : p
+                        ));
+                        addToast('Trailing Stop Activated', `#${pos.id} Stop loss moved to breakeven`, 'warning', 'bi-shield-check');
+                    }
+                });
+            }, [currentPrice, positions, settings.trailingTrigger, setPositions, addToast]);
+
+
+            return (
+                <>
+                    <Header connectionStatus={connectionStatus} balance={balance} totalPnL={totalPnL} />
+
+                    <div className="container-fluid px-4 pb-5">
+                        <div className="row">
+                            <div className="col-lg-8">
+                                <PriceDisplay price={currentPrice} prevPrice={prevPrice} change24h={change24h} />
+
+                                <div className="card p-3 mb-4">
+                                    <TradingChart candles={candles} bollingerBands={bollingerData} />
+                                </div>
+
+                                <RecommendationPanel recommendation={recommendation} signalStrength={signalStrength} />
+
+                                <div className="d-flex gap-3 mb-4">
+                                    <button
+                                        className="btn btn-success btn-trade flex-grow-1"
+                                        onClick={() => executeTrade('BUY', currentPrice)}
+                                        disabled={!currentPrice || connectionStatus !== 'connected' || positions.length >= settings.maxPositions}
+                                    >
+                                        <i className="bi bi-graph-up-arrow me-2"></i>
+                                        Execute LONG
+                                    </button>
+                                    <button
+                                        className="btn btn-danger btn-trade flex-grow-1"
+                                        onClick={() => executeTrade('SELL', currentPrice)}
+                                        disabled={!currentPrice || connectionStatus !== 'connected' || positions.length >= settings.maxPositions}
+                                    >
+                                        <i className="bi bi-graph-down-arrow me-2"></i>
+                                        Execute SHORT
+                                    </button>
+                                    {positions.length > 0 && (
+                                        <button
+                                            className="btn btn-warning btn-trade"
+                                            onClick={() => closeAllPositions(currentPrice)}
+                                            disabled={!currentPrice}
+                                        >
+                                            <i className="bi bi-x-circle me-2"></i>
+                                            Close All
+                                        </button>
+                                    )}
+                                </div>
+
+                                <PositionsPanel
+                                    positions={positions}
+                                    onClose={(id) => closePosition(id, currentPrice)}
+                                    currentPrice={currentPrice}
+                                />
+                            </div>
+
+                            <div className="col-lg-4">
+                                <IndicatorsPanel rsi={rsi} macd={macd} bb={bb} price={currentPrice} />
+                                <SettingsPanel settings={settings} setSettings={setSettings} />
+                                <TradeHistory trades={trades} />
+                            </div>
+                        </div>
+                    </div>
+
+                    <ToastContainer toasts={toasts} removeToast={(id) => setToasts(prev => prev.filter(t => t.id !== id))} />
+                </>
+            );
+        };
+
+        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
+</body>
+</html>
